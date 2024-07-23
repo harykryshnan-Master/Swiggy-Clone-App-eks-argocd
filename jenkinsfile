@@ -5,59 +5,63 @@ pipeline {
         nodejs 'nodejs16'
     }
     environment {
-        SCANNER_HOME=tool 'sonar-scanner'
+        SCANNER_HOME = tool name: 'sonar-scanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+        SONAR_PROJECT_KEY = 'Food-Clone-App-eks-argocd'
+        SONAR_PROJECT_NAME = 'Food-Clone-App-eks-argocd'
+        SONAR_QUALITY_PROFILE = 'Sonar-check'
     }
+    
     stages {
-        stage('git checkout') {
+        stage('Clean workspace') {
             steps {
-                git branch: 'main', url: 'https://github.com/epic-croswords/Swiggy-Clone-App-eks-argocd.git'
+                cleanWs()
             }
         }
-        stage('sonarqube') {
+        
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/harykryshnan-Master/Food-Clone-App-eks-argocd.git'
+            }
+        }
+        
+        stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonar') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Swiggy-CICD \
-                    -Dsonar.projectKey=Swiggy-CICD '''
-                    }
+                    sh """ 
+                    ${env.SCANNER_HOME}/bin/sonar-scanner \
+                    -Dsonar.projectKey=${env.SONAR_PROJECT_KEY} \
+                    -Dsonar.projectName=${env.SONAR_PROJECT_NAME} \
+                    -Dsonar.qualitygate.wait=true \
+                    -Dsonar.qualitygate.timeout=300 \
+                    -Dsonar.qualityprofile=${env.SONAR_QUALITY_PROFILE}
+                    """
+                }
             }
         }
-        stage('quality gates') {
+        
+        stage('Quality Gates') {
             steps {
-                script{
-                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                timeout(time: 1, unit: 'HOURS') {
+                    script {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                        }
+                    }
                 }
+            }
         }
-    }
-    stage('dependancy') {
+        
+        stage('Dependency Install') {
             steps {
                 sh "npm install"
+            }
         }
-    }
-    stage('OWASP') {
-            steps {
-              dependencyCheck additionalArguments: '--scan ./  --disableYarnAudit --disableNodeAudit', odcInstallation: 'DC'
-              dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-        }
-    }
-    stage('trivy fs scan') {
+        
+        stage('Trivy Filesystem Scan') {
             steps {
                 sh "trivy fs . > trivy-fs.txt"
-        }
-    }
-    stage('docker build & docker push') {
-            steps {
-                withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
-                sh ''' docker build swiggy-app .  \
-                docker tag swiggy-app manlineroot12/swiggy-app:latest \
-                docker push manlineroot12/swiggy-app:latest '''
-                }
-        }
-    }
-    stage('trivy image scan') {
-            steps {
-                sh "trivy image manlineroot12/swiggy-app:latest > trivy-img.txt"
+            }
         }
     }
 }
-}
-
