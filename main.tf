@@ -1,6 +1,6 @@
 resource "aws_instance" "web" {
   ami                    = "ami-0fc5d935ebf8bc3bc"   #change ami id for different region
-  instance_type          = "t2.large"
+  instance_type          = "t3.large"
   key_name               = "Mario"
   vpc_security_group_ids = [aws_security_group.Jenkins-sg.id]
   user_data              = templatefile("./install.sh", {})
